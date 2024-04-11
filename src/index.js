@@ -25,7 +25,7 @@ function checkOwner(pubkey) {
 
 export default {
 	async fetch(request, env, ctx) {
-		console.log(env)
+		// console.log(env)
 
 		if (request.headers.get('Upgrade') === 'websocket') {
 			// websocket connection
@@ -56,22 +56,22 @@ async function handleSession(env, websocket) {
 	websocket.accept();
 	websocket.addEventListener('message', async (wsEvent) => {
 		try {
-			messageHandling++;
-			if (messageHandling > 5 && !isOwner) {
-				sendNotice(websocket, "Too fast! Slow down please!")
-				return;
-			}
-
 			if (wsEvent.data == 'ping') {
 				websocket.send('pong');
 				return;
 			}
 
-			console.log(wsEvent);
+			// console.log(wsEvent.data);
 			const message = JSON.parse(wsEvent.data);
 
 			const typ = message[0];
 			if (typ == 'REQ') {
+				messageHandling++;
+				if (messageHandling > 5 && !isOwner) {
+					sendNotice(websocket, "Too fast! Slow down please!")
+					return;
+				}
+
 				await doReq(env, websocket, message)
 			} else if (typ == 'EVENT') {
 				let event = message[1];
@@ -92,8 +92,9 @@ async function handleSession(env, websocket) {
 			} else if (typ == 'CLOSE') {
 				// we haven't holder subscription and push, so just ignore the close message.
 			} else if (typ == 'AUTH') {
-				let pubkey = await doAuth(websocket, message, challengeStr);
+				let pubkey = doAuth(websocket, message, challengeStr);
 				if (pubkey != null) {
+					console.log("doAuth result " + pubkey);
 					authed = true;
 					authedPubkey = pubkey;
 					if (checkOwner(pubkey)) {
@@ -107,14 +108,6 @@ async function handleSession(env, websocket) {
 			} else {
 
 			}
-
-			// if (data === 'CLICK') {
-			// 	count += 1;
-			// 	websocket.send(JSON.stringify({ count: count, tz: new Date() }));
-			// } else {
-			// 	// An unknown message came into the server. Send back an error message
-			// 	websocket.send(JSON.stringify({ error: 'Unknown message received', tz: new Date() }));
-			// }
 		} catch (e) {
 			console.log(e);
 		} finally {
@@ -152,7 +145,7 @@ async function doReq(env, websocket, message) {
 			}
 		}
 
-		await websocket.send('["EOSE",'+subscriptionId+']');
+		await websocket.send('["EOSE","'+subscriptionId+'"]');
 	}
 }
 
@@ -202,7 +195,7 @@ function queryEventsSql(filter, doCount, params) {
 	key = 'kinds';
 	if (filter[key] != null && filter[key] instanceof Array && filter[key].length > 0) {
 		params.push.apply(params, filter[key]);
-		conditions.push('kinds IN('+makePlaceHolders(filter[key].length)+')')
+		conditions.push('kind IN('+makePlaceHolders(filter[key].length)+')')
 		filter[key] = null;
 	}
 
@@ -280,7 +273,8 @@ function makePlaceHolders(n) {
 	}
 
 	let arrs = new Array(n - 1);
-	return arrs.join("?,") + ",?";
+	arrs.fill('?');
+	return arrs.join(',') + ',?';
 }
 
 async function doEvent(env, websocket, event) {
@@ -312,7 +306,7 @@ async function doEvent(env, websocket, event) {
 }
 
 // check the auth message and return the pubkey
-async function doAuth(websocket, message, challengeStr) {
+function doAuth(websocket, message, challengeStr) {
 	if (message.length > 1) {
 		let event = message[1];
 		if (event.tags != null) {
