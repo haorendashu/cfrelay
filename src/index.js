@@ -15,6 +15,7 @@ let utf8Encoder = new TextEncoder()
 
 const EVENT_KIND = {
 	"EVENT_DELETION": 5,
+	"STORAGE_SHARED_FILE": 1064,
 }
 
 const owners = ["29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07"];
@@ -171,6 +172,16 @@ async function doReq(env, websocket, message) {
 				if (typeof tagsStr == 'string') {
 					event.tags = JSON.parse(tagsStr);
 				}
+
+				if (event.kind === EVENT_KIND.STORAGE_SHARED_FILE) {
+					// NIP-95 event, load the content from KV or R2 (not implement)
+					let content = await env.KV.get(event.id);
+					// send to client by string combine avoid json encode
+					let eventStr = JSON.stringify(event, ['id', 'pubkey', 'created_at', 'kind', 'tags', 'sig']);
+					await websocket.send('["EVENT","'+subscriptionId+'",{"content":"'+content+'",'+eventStr.substring(1)+']');
+					continue
+				}
+
 				await websocket.send(JSON.stringify(["EVENT", subscriptionId, event]));
 			}
 		}
@@ -309,6 +320,7 @@ function makePlaceHolders(n) {
 
 async function doEvent(env, websocket, event) {
 	if (event.kind === EVENT_KIND.EVENT_DELETION) {
+		// delete event
 		for (let tag in event.tags) {
 			if (tag.length > 1) {
 				let k = tag[0];
@@ -320,17 +332,29 @@ async function doEvent(env, websocket, event) {
 				}
 			}
 		}
-	} else {
-		let tags = event.tags;
-		if (tags !== null) {
-			event.tags = JSON.stringify(tags);
-			try {
-				// maybe the event is existing.
-				const result = await env.DB.prepare("insert into event(id, pubkey, created_at, kind, tags, content, sig) values (?, ?, ?, ?, ?, ?, ?)").bind(event.id, event.pubkey, event.created_at, event.kind, event.tags, event.content, event.sig).run();
-				console.log("insert result: ");
-				console.log(result);
-			} catch (e) {
-			}
+
+		return;
+	} else if (event.kind === EVENT_KIND.STORAGE_SHARED_FILE) {
+		// NIP-95 file, save to content to store: KV or R2 (not implement)
+		let content = event.content;
+		console.log(content)
+		let result = await env.KV.put(event.id, content);
+		console.log(result)
+
+		// clean the content
+		event.content = "";
+	}
+
+	// base event
+	let tags = event.tags;
+	if (tags !== null) {
+		event.tags = JSON.stringify(tags);
+		try {
+			// maybe the event is existing.
+			const result = await env.DB.prepare("insert into event(id, pubkey, created_at, kind, tags, content, sig) values (?, ?, ?, ?, ?, ?, ?)").bind(event.id, event.pubkey, event.created_at, event.kind, event.tags, event.content, event.sig).run();
+			console.log("insert result: ");
+			console.log(result);
+		} catch (e) {
 		}
 	}
 }
