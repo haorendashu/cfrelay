@@ -19,13 +19,36 @@ const EVENT_KIND = {
 
 const owners = ["29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07"];
 
+const relayInfo = {
+	"name": "cfrelay",
+	"description": "A relay run at cloudflare.",
+	"pubkey": "29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07",
+	"software": "custom",
+	"supported_nips": [1, 2, 4, 9, 11, 12, 16, 20, 33, 40, 42, 45, 50, 95],
+	"version": "0.0.1",
+}
+
+const relayInfoJsonStr = JSON.stringify(relayInfo);
+
+const relayInfoHeader = new Headers({
+	"Content-Type": "application/nostr+json",
+});
+
+const corsHeader = new Headers({
+	"Access-Control-Allow-Origin": "*",
+	"Access-Control-Allow-Methods": "GET, POST, PUT",
+	"Access-Control-Allow-Headers": "Upgrade, Accept, Content-Type, User-Agent",
+	"Access-Control-Allow-Credentials": "true",
+});
+
 function checkOwner(pubkey) {
 	return owners.includes(pubkey);
 }
 
 export default {
 	async fetch(request, env, ctx) {
-		// console.log(env)
+		// const url = new URL(request.url);
+		// if (url.pathname == '/') {}
 
 		if (request.headers.get('Upgrade') === 'websocket') {
 			// websocket connection
@@ -36,9 +59,16 @@ export default {
 				status: 101,
 				webSocket: client,
 			});
+		} else if (request.method == 'OPTIONS') {
+			// handle cors
+			return new Response("", {
+				status: 200, headers: corsHeader,
+			});
 		} else if (request.headers.get('Accept') == 'application/nostr+json') {
-			// return relay
-			return new Response('Hello Relay!');
+			// return relay info
+			return new Response(relayInfoJsonStr, {
+				status: 200, headers: relayInfoHeader,
+			});
 		}
 
 		return new Response('Hello World!');
