@@ -18,6 +18,8 @@ const EVENT_KIND = {
 	"STORAGE_SHARED_FILE": 1064,
 }
 
+const MAX_FILTER_LIMIT = 500;
+
 const owners = ["29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07"];
 
 const relayInfo = {
@@ -72,7 +74,7 @@ export default {
 			});
 		}
 
-		return new Response('Hello World!');
+		return new Response('A relay run at cloudflare.');
 	},
 };
 
@@ -289,6 +291,9 @@ function queryEventsSql(filter, doCount, params) {
 
 	let limit = filter['limit'];
 	if (limit != null && limit > 0) {
+		if (limit > MAX_FILTER_LIMIT) {
+			limit = MAX_FILTER_LIMIT;
+		}
 		params.push(limit);
 	} else {
 		params.push(100); // This is a default num.
