@@ -75,6 +75,12 @@ id = "Here is there kv id"
 
 ### 6.Deploy
 
+run this script to install project dependent
+
+```bash
+npm install
+```
+
 run this script to deploy
 
 ```bash
