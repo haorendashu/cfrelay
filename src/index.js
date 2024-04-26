@@ -339,6 +339,10 @@ async function doEvent(env, websocket, event) {
 					const result = await env.DB.prepare("delete from event where id = ? and pubkey = ?").bind(v, event.pubkey).run();
 					console.log("delete result: ");
 					console.log(result);
+					// try to delete kv
+					try {
+						await env.KV.delete(v);
+					} catch (e) {}
 				}
 			}
 		}
