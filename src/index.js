@@ -26,7 +26,7 @@ const relayInfo = {
 	"name": "cfrelay",
 	"description": "A relay run at cloudflare.",
 	"pubkey": "29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07",
-	"software": "custom",
+	"software": "https://github.com/haorendashu/cfrelay",
 	"supported_nips": [1, 2, 9, 11, 12, 16, 33, 42, 45, 50, 95],
 	"version": "0.0.1",
 }
