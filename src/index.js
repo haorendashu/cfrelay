@@ -160,7 +160,7 @@ function sendNotice(websocket, msg) {
 	websocket.send('["NOTICE","'+msg+'"]');
 }
 
-async function doReq(env, websocket, message) {
+async function doReq(env, websocket, message, isOwner) {
 	if (message.length > 2) {
 		let subscriptionId = message[1];
 
@@ -169,6 +169,11 @@ async function doReq(env, websocket, message) {
 			let events = await doQueryEvent(env, filter);
 			for (let j = 0; j < events.length; j++) {
 				let event = events[j];
+				if (!isOwner && (event.kind == 4 || event.kind == 1059)) {
+					// only the owner can receive DM and GiftWrap event
+					continue;
+				}
+
 				// due to tags save to db had be encoded to jsonStr, so it must be decoded to json here
 				let tagsStr = event.tags;
 				if (typeof tagsStr == 'string') {
