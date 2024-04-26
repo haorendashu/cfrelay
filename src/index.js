@@ -105,7 +105,7 @@ async function handleSession(env, websocket) {
 					return;
 				}
 
-				await doReq(env, websocket, message)
+				await doReq(env, websocket, message, isOwner)
 			} else if (typ == 'EVENT') {
 				let event = message[1];
 
