@@ -60,6 +60,13 @@ change the owners in in ```src/index.js```, chenge the ```29320975df855fe34a7b45
 const owners = ["29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07"];
 ```
 
+change the nip05 config
+
+```js
+// nip05user config should set like this:
+const nip05User = {"nicename": "pubkey"};
+```
+
 change config file wrangler.toml set the database_id and kv_namespaces' id
 
 ```toml

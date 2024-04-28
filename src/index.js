@@ -22,6 +22,11 @@ const MAX_FILTER_LIMIT = 500;
 
 const owners = ["29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07"];
 
+// nip05user config should set like this:
+// ==> nip05User = {"nicename": "pubkey"};
+const nip05User = {"dashu": "29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07"};
+const nip05UserJsonStr = JSON.stringify({"names": nip05User});
+
 const relayInfo = {
 	"name": "cfrelay",
 	"description": "A relay run at cloudflare.",
@@ -37,6 +42,10 @@ const relayInfoHeader = new Headers({
 	"Content-Type": "application/nostr+json",
 });
 
+const jsonHeader = new Headers({
+	"Content-Type": "application/json",
+});
+
 const corsHeader = new Headers({
 	"Access-Control-Allow-Origin": "*",
 	"Access-Control-Allow-Methods": "GET, POST, PUT",
@@ -50,9 +59,6 @@ function checkOwner(pubkey) {
 
 export default {
 	async fetch(request, env, ctx) {
-		// const url = new URL(request.url);
-		// if (url.pathname == '/') {}
-
 		if (request.headers.get('Upgrade') === 'websocket') {
 			// websocket connection
 			const [client, server] = Object.values(new WebSocketPair());
@@ -71,6 +77,14 @@ export default {
 			// return relay info
 			return new Response(relayInfoJsonStr, {
 				status: 200, headers: relayInfoHeader,
+			});
+		}
+
+		const url = new URL(request.url);
+		if (url.pathname == '/.well-known/nostr.json') {
+			// return relay info
+			return new Response(nip05UserJsonStr, {
+				status: 200, headers: jsonHeader,
 			});
 		}
 
