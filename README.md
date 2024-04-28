@@ -6,6 +6,7 @@ A relay run at cloudflare.
 
 - [x] NIP-01 (Basic protocol flow description)
 - [x] NIP-02 (Follow List)
+- [x] NIP-05 (Mapping Nostr keys to DNS-based internet identifiers)
 - [x] NIP-09 (Event Deletion)
 - [x] NIP-11 (Relay Information Document)
 - [x] NIP-12 (Generic Tag Queries)
