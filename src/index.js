@@ -527,12 +527,12 @@ function verifyNip98(request) {
 	});
 }
 
-function getNip96DownloadUrl(request, ox, extension) {
+function getNip96DownloadUrl(request, fullFilename) {
 	if (r2CustomDomain && r2CustomDomain != '') {
-		return r2CustomDomain + '/' + ox + extension;
+		return r2CustomDomain + '/' + fullFilename;
 	}
 
-	return getRequestHost(request) + '/nip96images/' + ox + extension;
+	return getRequestHost(request) + '/nip96images/' + fullFilename;
 }
 
 async function handleNip96Upload(env, request) {
@@ -564,8 +564,10 @@ async function handleNip96Upload(env, request) {
 	let data = await file.arrayBuffer();
 	let ox = bytesToHex(await sha256(new Uint8Array(data)));
 
-	await env.R2.put(ox,data);
-	let url = getNip96DownloadUrl(request, ox, extension);
+	let fullFilename = ox + extension;
+
+	await env.R2.put(fullFilename, data);
+	let url = getNip96DownloadUrl(request, fullFilename);
 
 	let nip94Event = {
 		"tags": [
