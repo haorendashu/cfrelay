@@ -398,7 +398,9 @@ function makePlaceHolders(n) {
 async function doEvent(env, websocket, event) {
 	if (event.kind === EVENT_KIND.EVENT_DELETION) {
 		// delete event
-		for (let tag in event.tags) {
+		let tagsLength = event.tags.length;
+		for (let index = 0; index < tagsLength; index++) {
+			let tag = event.tags[index];
 			if (tag.length > 1) {
 				let k = tag[0];
 				let v = tag[1];
