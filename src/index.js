@@ -10,6 +10,7 @@
 import {bytesToHex} from '@noble/hashes/utils'
 import { sha256 } from '@noble/hashes/sha256'
 import { schnorr } from '@noble/curves/secp256k1'
+import { decode as base64Decode } from 'js-base64';
 
 let utf8Encoder = new TextEncoder()
 
@@ -27,13 +28,15 @@ const owners = ["29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b0
 const nip05User = {"dashu": "29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07"};
 const nip05UserJsonStr = JSON.stringify({"names": nip05User});
 
+const r2CustomDomain = '';
+
 const relayInfo = {
 	"name": "cfrelay",
 	"description": "A relay run at cloudflare.",
 	"pubkey": "29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07",
 	"software": "https://github.com/haorendashu/cfrelay",
-	"supported_nips": [1, 2, 9, 11, 12, 16, 33, 42, 45, 50, 95],
-	"version": "0.0.1",
+	"supported_nips": [1, 2, 5, 9, 11, 12, 16, 33, 42, 45, 50, 95, 96],
+	"version": "0.0.2",
 }
 
 const relayInfoJsonStr = JSON.stringify(relayInfo);
@@ -52,6 +55,38 @@ const corsHeader = new Headers({
 	"Access-Control-Allow-Headers": "Upgrade, Accept, Content-Type, User-Agent",
 	"Access-Control-Allow-Credentials": "true",
 });
+
+const nip96Info = {
+	"api_url": "http://127.0.0.1:8787/api/nip96/upload",
+	"supported_nips": [94, 96, 98],
+	"content_types": ["image/*", "video/*", "audio/*"],
+	"plans": {
+		"free": {
+			"name": "Free",
+			"is_nip98_required": true,
+			"max_byte_size": 10485760,
+			"file_expiration": [0, 0],
+			"media_transformations": {}
+		}
+	}
+};
+
+const nip98AuthJsonStr = '{"status":"error","message":"NIP-98 check fail."}';
+
+const API_FAIL = "fail";
+function buildApiResult(status, message) {
+	if (!status) {
+		status = 'success';
+	}
+	if (!message) {
+		message = 'success';
+	}
+
+	return {
+		"status": status,
+		"message": message,
+	}
+}
 
 function checkOwner(pubkey) {
 	return owners.includes(pubkey);
@@ -82,10 +117,28 @@ export default {
 
 		const url = new URL(request.url);
 		if (url.pathname == '/.well-known/nostr.json') {
-			// return relay info
+			// return nip05 info
 			return new Response(nip05UserJsonStr, {
 				status: 200, headers: jsonHeader,
 			});
+		} else if (url.pathname == '/.well-known/nostr/nip96.json') {
+			// return nip96 info
+			nip96Info['api_url'] = getRequestHost(request) + '/api/nip96/upload';
+			return new Response(JSON.stringify(nip96Info), {
+				status: 200, headers: jsonHeader,
+			});
+		} else if (url.pathname == '/api/nip96/upload') {
+			// handle nip96 upload method
+			let nip98Result = verifyNip98(request);
+			if (nip98Result != null) {
+				return nip98Result;
+			}
+
+			return await handleNip96Upload(env, request);
+		} else if (url.pathname.startsWith('/nip96images/')) {
+			// ** This is method only use for dev, don't use it for your public access. **
+			// handle nip96 download method
+			return await handleNip96Download(env, request, url.pathname);
 		}
 
 		return new Response('A relay run at cloudflare.');
@@ -442,4 +495,111 @@ function generateRandomString(length) {
 	}
 
 	return result;
+}
+
+function getRequestHost(request) {
+	const url = new URL(request.url);
+	return url.origin;
+}
+
+// check if the reqeust nip98 auth success and if the pubkey is owner.
+// success return null.
+// fail return a http response.
+function verifyNip98(request) {
+	let authorText = request.headers.get('Authorization');
+	if (authorText != null) {
+		authorText = authorText.replaceAll("Nostr ", "")
+		let authEventText = base64Decode(authorText);
+		const authEvent = JSON.parse(authEventText);
+
+		if (verifyEvent(authEvent)) {
+			// authEvent check success
+			// check the owner
+			if (checkOwner(authEvent.pubkey)) {
+				// it's owner request
+				return null;
+			}
+		}
+	}
+
+	return new Response(nip98AuthJsonStr, {
+		status: 200, headers: jsonHeader,
+	});
+}
+
+function getNip96DownloadUrl(request, ox, extension) {
+	if (r2CustomDomain && r2CustomDomain != '') {
+		return r2CustomDomain + '/' + ox + extension;
+	}
+
+	return getRequestHost(request) + '/nip96images/' + ox + extension;
+}
+
+async function handleNip96Upload(env, request) {
+	let formData = await request.formData();
+	let file = formData.get('file');
+
+	let filename = file.name;
+	let extension = '';
+	if (filename) {
+		let filenameStrs = filename.split('.')
+		extension = filenameStrs[filenameStrs.length - 1];
+	}
+	if (extension == '') {
+		let contentType = request.headers.get('Content-Type');
+		let contentTypeStrs = contentType.split('/');
+		let ct = contentTypeStrs[0];
+		if (ct == 'image') {
+			extension = 'jpg';
+		} else if (ct == 'video') {
+			extension = 'mp4';
+		} else if (ct == 'audio') {
+			extension = 'mp3';
+		}
+	}
+	if (extension != '') {
+		extension = '.' + extension;
+	}
+
+	let data = await file.arrayBuffer();
+	let ox = bytesToHex(await sha256(new Uint8Array(data)));
+
+	await env.R2.put(ox,data);
+	let url = getNip96DownloadUrl(request, ox, extension);
+
+	let nip94Event = {
+		"tags": [
+			["url", url],
+			["ox", ox]
+		],
+		content: ""
+	};
+
+	let result = buildApiResult(null, 'Upload successful.');
+	result['nip94_event'] = nip94Event;
+
+	return new Response(JSON.stringify(result), {
+		status: 200, headers: jsonHeader,
+	});
+}
+
+async function handleNip96Download(env, request, pathname) {
+	let filename = pathname.replaceAll('/nip96images/', '');
+	let filenameStrs = filename.split('.');
+	let key = filenameStrs[0];
+
+	const object = await env.R2.get(key);
+	if (!object) {
+		return new Response('File not found.', {
+			status: 400,
+		});
+	}
+
+	const headers = new Headers();
+	object.writeHttpMetadata(headers);
+	headers.set('etag', object.httpEtag);
+
+	return new Response(object.body, {
+		headers,
+	});
 }

@@ -13,6 +13,11 @@ database_id = ""
 binding = "KV"
 id = ""
 
+# If you use the R2 for NIP-96, you should config this setting.
+# [[r2_buckets]]
+# binding = "R2"
+# bucket_name = "relay"
+
 # Variable bindings. These are arbitrary, plaintext strings (similar to environment variables)
 # Note: Use secrets to store sensitive data.
 # Docs: https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
