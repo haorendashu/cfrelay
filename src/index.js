@@ -46,6 +46,10 @@ const relayInfoHeader = new Headers({
 });
 
 const jsonHeader = new Headers({
+	"Access-Control-Allow-Origin": "*",
+	"Access-Control-Allow-Methods": "GET, POST, PUT",
+	"Access-Control-Allow-Headers": "Upgrade, Accept, Content-Type, User-Agent",
+	"Access-Control-Allow-Credentials": "true",
 	"Content-Type": "application/json",
 });
 
