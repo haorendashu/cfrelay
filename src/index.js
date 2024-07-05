@@ -314,17 +314,17 @@ function queryEventsSql(filter, doCount, params) {
 	key = 'kinds';
 	let limit1Kind = false;
 	if (filter[key] != null && filter[key] instanceof Array && filter[key].length > 0) {
-		params.push.apply(params, filter[key]);
-		conditions.push('kind IN('+makePlaceHolders(filter[key].length)+')')
-		filter[key] = null;
-
 		if (filter[key].length == 1) {
-			let kind = filter[key];
+			let kind = filter[key][0];
 			// these kind event should only return 1 event back.
-			if (kind == "0" || kind == "3" || kind == "10002") {
+			if (kind == 0 || kind == 3 || kind == 10002) {
 				limit1Kind = true;
 			}
 		}
+
+		params.push.apply(params, filter[key]);
+		conditions.push('kind IN('+makePlaceHolders(filter[key].length)+')')
+		filter[key] = null;
 	}
 
 	key = 'since';
