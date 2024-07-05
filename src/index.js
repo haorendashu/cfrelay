@@ -19,7 +19,7 @@ const EVENT_KIND = {
 	"STORAGE_SHARED_FILE": 1064,
 }
 
-const MAX_FILTER_LIMIT = 500;
+const MAX_FILTER_LIMIT = 60;
 
 const owners = ["29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07"];
 
@@ -36,7 +36,7 @@ const relayInfo = {
 	"pubkey": "29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07",
 	"software": "https://github.com/haorendashu/cfrelay",
 	"supported_nips": [1, 2, 5, 9, 11, 12, 16, 33, 42, 45, 50, 95, 96],
-	"version": "0.0.2",
+	"version": "0.0.3",
 }
 
 const relayInfoJsonStr = JSON.stringify(relayInfo);
@@ -312,10 +312,19 @@ function queryEventsSql(filter, doCount, params) {
 	}
 
 	key = 'kinds';
+	let limit1Kind = false;
 	if (filter[key] != null && filter[key] instanceof Array && filter[key].length > 0) {
 		params.push.apply(params, filter[key]);
 		conditions.push('kind IN('+makePlaceHolders(filter[key].length)+')')
 		filter[key] = null;
+
+		if (filter[key].length == 1) {
+			let kind = filter[key];
+			// these kind event should only return 1 event back.
+			if (kind == "0" || kind == "3" || kind == "10002") {
+				limit1Kind = true;
+			}
+		}
 	}
 
 	key = 'since';
@@ -372,7 +381,11 @@ function queryEventsSql(filter, doCount, params) {
 		}
 		params.push(limit);
 	} else {
-		params.push(100); // This is a default num.
+		if (limit1Kind) {
+			params.push(1); // only return 1 event back
+		} else {
+			params.push(MAX_FILTER_LIMIT); // This is a default num.
+		}
 	}
 
 	if (doCount) {
