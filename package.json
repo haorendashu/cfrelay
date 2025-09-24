@@ -6,7 +6,9 @@
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "start": "wrangler dev",
-    "test": "vitest"
+    "test": "vitest",
+	"predeploy": "wrangler d1 migrations apply DB --remote",
+	"seedLocalD1": "wrangler d1 migrations apply DB --local"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.1.0",
