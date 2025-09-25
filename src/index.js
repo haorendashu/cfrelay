@@ -29,7 +29,7 @@ const relayInfo = {
 	"pubkey": "",
 	"software": "https://github.com/haorendashu/cfrelay",
 	"supported_nips": [1, 2, 5, 9, 11, 12, 16, 33, 42, 45, 50, 95, 96],
-	"version": "0.0.3",
+	"version": "0.0.4",
 }
 
 const relayInfoHeader = new Headers({
