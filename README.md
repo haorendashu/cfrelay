@@ -36,6 +36,16 @@ Because the R2 must bing the payment method and when it run out of the free plan
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fhaorendashu%2Fcfrelay)
 
+#### 1. Add Github Connection
+
+#### 2. Change Environment Variables
+
+Change ```OWNER``` TO Your plain Pubkey.
+
+Change ```NIP05_USERS_TEXT``` for your NIP05. (Optional)
+
+#### 3. Just Tap ```Create and deploy``` button.
+
 ### Deploy by NPM and wrangler
 
 #### 1. Install NPM

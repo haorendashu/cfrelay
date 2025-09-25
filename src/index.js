@@ -544,7 +544,7 @@ function verifyNip98(env, request) {
 }
 
 function getNip96DownloadUrl(env, request, fullFilename) {
-	if (env.R2_CUSTOM_DOMAIN && env.R2_CUSTOM_DOMAIN != '') {
+	if (env.R2_CUSTOM_DOMAIN && env.R2_CUSTOM_DOMAIN != '' && env.R2_CUSTOM_DOMAIN != 'null') {
 		return env.R2_CUSTOM_DOMAIN + '/' + fullFilename;
 	}
 
