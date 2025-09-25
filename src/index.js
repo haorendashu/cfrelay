@@ -23,8 +23,6 @@ const MAX_FILTER_LIMIT = 60;
 
 const owners = [];
 
-const r2CustomDomain = '';
-
 const relayInfo = {
 	"name": "cfrelay",
 	"description": "A relay run at cloudflare.",
@@ -545,9 +543,9 @@ function verifyNip98(env, request) {
 	});
 }
 
-function getNip96DownloadUrl(request, fullFilename) {
-	if (r2CustomDomain && r2CustomDomain != '') {
-		return r2CustomDomain + '/' + fullFilename;
+function getNip96DownloadUrl(env, request, fullFilename) {
+	if (env.R2_CUSTOM_DOMAIN && env.R2_CUSTOM_DOMAIN != '') {
+		return env.R2_CUSTOM_DOMAIN + '/' + fullFilename;
 	}
 
 	return getRequestHost(request) + '/nip96images/' + fullFilename;
@@ -585,7 +583,7 @@ async function handleNip96Upload(env, request) {
 	let fullFilename = ox + extension;
 
 	await env.R2.put(fullFilename, data);
-	let url = getNip96DownloadUrl(request, fullFilename);
+	let url = getNip96DownloadUrl(env, request, fullFilename);
 
 	let nip94Event = {
 		"tags": [

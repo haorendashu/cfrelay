@@ -32,11 +32,17 @@ Because the R2 must bing the payment method and when it run out of the free plan
 
 ## Deploy
 
-### 1. Install NPM
+### Deploy by Cloudflare and Github
 
-### 2. Install wrangler
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fhaorendashu%2Fcfrelay)
 
-### 3. Init D1 database
+### Deploy by NPM and wrangler
+
+#### 1. Install NPM
+
+#### 2. Install wrangler
+
+#### 3. Init D1 database
 
 create d1 database
 
@@ -50,13 +56,13 @@ run init script
 wrangler d1 execute relay --file=init.sql
 ```
 
-### 4.Init KV
+#### 4.Init KV
 
 ```bash
 wrangler kv:namespace create relay
 ```
 
-### 5.Init R2 (Optional)
+#### 5.Init R2 (Optional)
 
 **If you want to use R2, you must config your payment to cloudflare. I can't ensure that it won't cost you money**
 
@@ -71,25 +77,25 @@ wrangler r2 bucket create relay
 You can readmore from this [Connect a bucket to a custom domain
 ](https://developers.cloudflare.com/r2/buckets/public-buckets/#connect-a-bucket-to-a-custom-domain).
 
-### 5.Change files
+#### 5.Change Config file
 
-change the owners in in ```src/index.js```, chenge the ```29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07``` to you ```plain owner id```.
+change the owners in in ```wrangler.toml```, chenge the ```29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07``` to you ```plain owner id```.
 
-```js
-const owners = ["29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07"];
+``` toml
+OWNER = "29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07"
 ```
 
 ```(Optional)```. change the nip05 config
 
-```js
-// nip05user config should set like this:
-const nip05User = {"nicename": "pubkey"};
+``` toml
+// nip05 user config should set like this:
+NIP05_USERS_TEXT = '{"dashu": "29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07"}'
 ```
 
-```(Optional)```. If you use R2 for NIP-96 and had config a custom domain, you should config r2CustomDomain in ```src/index.js```.
+```(Optional)```. If you use R2 for NIP-96 and had config a custom domain, you should config r2CustomDomain in ```wrangler.toml```.
 
-```js
-const r2CustomDomain = 'You custom domain like: https://xxxxxx.com ';
+``` toml
+R2_CUSTOM_DOMAIN  = "You custom domain like: https://xxxxxx.com ";
 ```
 
 change config file wrangler.toml set the database_id and kv_namespaces' id
@@ -114,7 +120,7 @@ binding = "R2"
 bucket_name = "You bucket name"
 ```
 
-### 6.Deploy
+#### 6.Deploy
 
 run this script to install project dependent
 

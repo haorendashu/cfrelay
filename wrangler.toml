@@ -21,6 +21,7 @@ id = ""
 [vars]
 OWNER = "29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07"
 NIP05_USERS_TEXT = '{"dashu": "29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07"}'
+R2_CUSTOM_DOMAIN = ""
 
 # Variable bindings. These are arbitrary, plaintext strings (similar to environment variables)
 # Note: Use secrets to store sensitive data.
