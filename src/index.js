@@ -120,7 +120,7 @@ export default {
 		const url = new URL(request.url);
 		if (url.pathname == '/.well-known/nostr.json') {
 			// return nip05 info
-			const nip05UserJsonStr = JSON.stringify({"names": env.NIP05_USERS});
+			const nip05UserJsonStr = '{"names":' + env.NIP05_USERS_TEXT + '}';
 			return new Response(nip05UserJsonStr, {
 				status: 200, headers: jsonHeader,
 			});
