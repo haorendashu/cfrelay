@@ -44,7 +44,7 @@ Change ```OWNER``` TO Your plain Pubkey.
 
 Change ```NIP05_USERS_TEXT``` for your NIP05. (Optional)
 
-#### 3. Just Tap ```Create and deploy``` button.
+#### 3. Just Tap ```Create and deploy``` button
 
 ### Deploy by NPM and wrangler
 
