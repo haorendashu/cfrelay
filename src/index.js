@@ -21,25 +21,18 @@ const EVENT_KIND = {
 
 const MAX_FILTER_LIMIT = 60;
 
-const owners = ["29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07"];
-
-// nip05user config should set like this:
-// ==> nip05User = {"nicename": "pubkey"};
-const nip05User = {"dashu": "29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07"};
-const nip05UserJsonStr = JSON.stringify({"names": nip05User});
+const owners = [];
 
 const r2CustomDomain = '';
 
 const relayInfo = {
 	"name": "cfrelay",
 	"description": "A relay run at cloudflare.",
-	"pubkey": "29320975df855fe34a7b45ada2421e2c741c37c0136901fe477133a91eb18b07",
+	"pubkey": "",
 	"software": "https://github.com/haorendashu/cfrelay",
 	"supported_nips": [1, 2, 5, 9, 11, 12, 16, 33, 42, 45, 50, 95, 96],
 	"version": "0.0.3",
 }
-
-const relayInfoJsonStr = JSON.stringify(relayInfo);
 
 const relayInfoHeader = new Headers({
 	"Content-Type": "application/nostr+json",
@@ -92,7 +85,10 @@ function buildApiResult(status, message) {
 	}
 }
 
-function checkOwner(pubkey) {
+function checkOwner(env, pubkey) {
+	if (pubkey == env.OWNER) {
+		return true;
+	}
 	return owners.includes(pubkey);
 }
 
@@ -114,6 +110,8 @@ export default {
 			});
 		} else if (request.headers.get('Accept') == 'application/nostr+json') {
 			// return relay info
+			relayInfo["pubkey"] = env.OWNER;
+			const relayInfoJsonStr = JSON.stringify(relayInfo);
 			return new Response(relayInfoJsonStr, {
 				status: 200, headers: relayInfoHeader,
 			});
@@ -122,6 +120,7 @@ export default {
 		const url = new URL(request.url);
 		if (url.pathname == '/.well-known/nostr.json') {
 			// return nip05 info
+			const nip05UserJsonStr = JSON.stringify({"names": env.NIP05_USERS});
 			return new Response(nip05UserJsonStr, {
 				status: 200, headers: jsonHeader,
 			});
@@ -133,7 +132,7 @@ export default {
 			});
 		} else if (url.pathname == '/api/nip96/upload') {
 			// handle nip96 upload method
-			let nip98Result = verifyNip98(request);
+			let nip98Result = verifyNip98(env, request);
 			if (nip98Result != null) {
 				return nip98Result;
 			}
@@ -201,7 +200,7 @@ async function handleSession(env, websocket) {
 					console.log("doAuth result " + pubkey);
 					authed = true;
 					authedPubkey = pubkey;
-					if (checkOwner(pubkey)) {
+					if (checkOwner(env, pubkey)) {
 						isOwner = true;
 					}
 				} else {
@@ -524,7 +523,7 @@ function getRequestHost(request) {
 // check if the reqeust nip98 auth success and if the pubkey is owner.
 // success return null.
 // fail return a http response.
-function verifyNip98(request) {
+function verifyNip98(env, request) {
 	let authorText = request.headers.get('Authorization');
 	if (authorText != null) {
 		authorText = authorText.replaceAll("Nostr ", "")
@@ -534,7 +533,7 @@ function verifyNip98(request) {
 		if (verifyEvent(authEvent)) {
 			// authEvent check success
 			// check the owner
-			if (checkOwner(authEvent.pubkey)) {
+			if (checkOwner(env, authEvent.pubkey)) {
 				// it's owner request
 				return null;
 			}
