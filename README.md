@@ -2,6 +2,10 @@
 
 A relay run at cloudflare.
 
+[![Last Version](https://img.shields.io/github/release/haorendashu/cfrelay.svg?maxAge=3600&label=Stable&labelColor=06599d&color=043b69)](https://github.com/haorendashu/cfrelay)
+[![License: GNU General Public License v3.0](https://img.shields.io/github/license/haorendashu/cfrelay?labelColor=27303D&color=0877d2)](https://github.com/haorendashu/cfrelay/LICENSE)
+[![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/haorendashu/cfrelay?labelColor=27303D&color=0877d2)](https://github.com/haorendashu/cfrelay/issues)
+
 ## Features
 
 - [x] NIP-01 (Basic protocol flow description)
