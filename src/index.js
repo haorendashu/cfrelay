@@ -21,8 +21,6 @@ const EVENT_KIND = {
 
 const MAX_FILTER_LIMIT = 60;
 
-const owners = [];
-
 const relayInfo = {
 	"name": "cfrelay",
 	"description": "A relay run at cloudflare.",
@@ -83,15 +81,96 @@ function buildApiResult(status, message) {
 	}
 }
 
-function checkOwner(env, pubkey) {
-	if (pubkey == env.OWNER) {
-		return true;
+function getAllowedAuthors(env) {
+	const list = [];
+	if (env && env.OWNER) {
+		list.push(env.OWNER);
 	}
-	return owners.includes(pubkey);
+	const extra = env && (env.ALLOWED_AUTHORS || env.ALLOWED_PUBKEYS);
+	if (extra) {
+		if (typeof extra === 'string') {
+			try {
+				const parsed = JSON.parse(extra);
+				if (Array.isArray(parsed)) {
+					list.push(...parsed);
+				} else {
+					list.push(extra);
+				}
+			} catch (e) {
+				const split = extra.split(',').map(s => s.trim()).filter(Boolean);
+				list.push(...split);
+			}
+		} else if (Array.isArray(extra)) {
+			list.push(...extra);
+		}
+	}
+	return Array.from(new Set(list));
+}
+
+function checkOwner(env, pubkey) {
+	return getAllowedAuthors(env).includes(pubkey);
+}
+
+let isSchemaReady = false;
+let schemaInitPromise = null;
+
+async function ensureDatabaseSchema(env) {
+	if (isSchemaReady) {
+		return;
+	}
+
+	if (!schemaInitPromise) {
+		schemaInitPromise = (async () => {
+			try {
+				const tableCheck = await env.DB.prepare(
+					"SELECT name FROM sqlite_master WHERE type='table' AND name='event_tag'"
+				).first();
+
+				if (!tableCheck) {
+					await env.DB.batch([
+						env.DB.prepare(
+							"CREATE TABLE IF NOT EXISTS event (id text NOT NULL, pubkey text NOT NULL, created_at integer NOT NULL, kind integer NOT NULL, tags jsonb NOT NULL, content text NOT NULL, sig text NOT NULL)"
+						),
+						env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS ididx ON event(id)"),
+						env.DB.prepare(
+							"CREATE TABLE IF NOT EXISTS event_tag (event_id text NOT NULL, tag_name text NOT NULL, tag_value text NOT NULL)"
+						),
+						env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_tag_lookup ON event_tag(tag_name, tag_value)"),
+						env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_tag_event ON event_tag(event_id)"),
+						env.DB.prepare(`
+							INSERT OR IGNORE INTO event_tag (event_id, tag_name, tag_value)
+							SELECT 
+								e.id,
+								json_extract(t.value, '$[0]') AS tag_name,
+								json_extract(t.value, '$[1]') AS tag_value
+							FROM event e, json_each(e.tags) t
+							WHERE json_valid(e.tags) = 1
+							  AND json_extract(t.value, '$[0]') IS NOT NULL
+							  AND json_extract(t.value, '$[1]') IS NOT NULL
+							  AND length(json_extract(t.value, '$[0]')) = 1
+						`),
+						env.DB.prepare("DROP INDEX IF EXISTS pubkeyprefix"),
+						env.DB.prepare("DROP INDEX IF EXISTS kindidx"),
+						env.DB.prepare("DROP INDEX IF EXISTS timeidx"),
+						env.DB.prepare("DROP INDEX IF EXISTS kindtimeidx"),
+						env.DB.prepare("CREATE INDEX IF NOT EXISTS pubkey_kind_time ON event(pubkey, kind, created_at DESC)"),
+					]);
+				}
+				isSchemaReady = true;
+			} catch (e) {
+				schemaInitPromise = null;
+				console.error("ensureDatabaseSchema error:", e);
+				throw e;
+			}
+		})();
+	}
+
+	await schemaInitPromise;
 }
 
 export default {
 	async fetch(request, env, ctx) {
+		await ensureDatabaseSchema(env);
 		if (request.headers.get('Upgrade') === 'websocket') {
 			// websocket connection
 			const [client, server] = Object.values(new WebSocketPair());
@@ -277,7 +356,7 @@ async function doCount(env, websocket, message) {
 
 async function doQueryEvent(env, filter) {
 	let params = [];
-	let sql = queryEventsSql(filter, false, params);
+	let sql = queryEventsSql(env, filter, false, params);
 	console.log(sql);
 	console.log(params);
 	const { results } = await env.DB.prepare(sql).bind(...params).all();
@@ -286,12 +365,14 @@ async function doQueryEvent(env, filter) {
 
 async function doQueryCount(env, filter) {
 	let params = [];
-	let sql = queryEventsSql(filter, true, params);
+	let sql = queryEventsSql(env, filter, true, params);
 	console.log(sql);
 	return await env.DB.prepare(sql).bind(...params).first('total');
 }
 
-function queryEventsSql(filter, doCount, params) {
+const DEFAULT_KINDS = [0, 1, 3, 5, 6, 7, 9735, 10002, 30023];
+
+function queryEventsSql(env, filter, doCount, params) {
 	let conditions = [];
 
 	let key = 'ids';
@@ -302,27 +383,30 @@ function queryEventsSql(filter, doCount, params) {
 	}
 
 	key = 'authors';
-	if (filter[key] != null && filter[key] instanceof Array && filter[key].length > 0) {
-		params.push.apply(params, filter[key]);
-		conditions.push('pubkey IN('+makePlaceHolders(filter[key].length)+')')
-		filter[key] = null;
+	let authors = filter[key];
+	if (!authors || !(authors instanceof Array) || authors.length === 0) {
+		authors = getAllowedAuthors(env);
 	}
+	params.push.apply(params, authors);
+	conditions.push('pubkey IN('+makePlaceHolders(authors.length)+')');
+	filter[key] = null;
 
 	key = 'kinds';
+	let kinds = filter[key];
 	let limit1Kind = false;
-	if (filter[key] != null && filter[key] instanceof Array && filter[key].length > 0) {
-		if (filter[key].length == 1) {
-			let kind = filter[key][0];
-			// these kind event should only return 1 event back.
-			if (kind == 0 || kind == 3 || kind == 10002) {
-				limit1Kind = true;
-			}
+	if (!kinds || !(kinds instanceof Array) || kinds.length === 0) {
+		kinds = DEFAULT_KINDS;
+	} else if (kinds.length === 1) {
+		let kind = kinds[0];
+		// these kind event should only return 1 event back.
+		if (kind == 0 || kind == 3 || kind == 10002) {
+			limit1Kind = true;
 		}
-
-		params.push.apply(params, filter[key]);
-		conditions.push('kind IN('+makePlaceHolders(filter[key].length)+')')
-		filter[key] = null;
 	}
+
+	params.push.apply(params, kinds);
+	conditions.push('kind IN('+makePlaceHolders(kinds.length)+')');
+	filter[key] = null;
 
 	key = 'since';
 	let since = filter[key];
@@ -348,23 +432,17 @@ function queryEventsSql(filter, doCount, params) {
 	}
 	filter[key] = null;
 
-	let tagQuery = [];
+	// Query tags using indexed event_tag subquery instead of tags LIKE full table scan
 	for (let k in filter) {
-		let v = filter[k];
-		if (k != 'limit' && v != null) {
-			v.forEach(function(vItem) {
-				if (vItem.length > 10) {
-					tagQuery.push('\"'+k.replaceAll('#', "")+'\",\"' + getMaxString(vItem, 30));
-				} else {
-					tagQuery.push('\"'+k.replaceAll('#', "")+'\",\"' + vItem);
-				}
-			})
+		if (k.startsWith('#') && filter[k] != null && Array.isArray(filter[k]) && filter[k].length > 0) {
+			const tagName = k.slice(1);
+			const tagValues = filter[k];
+			conditions.push(
+				'id IN (SELECT event_id FROM event_tag WHERE tag_name = ? AND tag_value IN (' + makePlaceHolders(tagValues.length) + '))'
+			);
+			params.push(tagName);
+			params.push.apply(params, tagValues);
 		}
-	}
-	for (let index in tagQuery) {
-		let tagValue = tagQuery[index];
-		conditions.push('tags LIKE ? ESCAPE "\\"');
-		params.push('%'+tagValue.replaceAll('%', '\%')+'%');
 	}
 
 	if (conditions.length == 0) {
@@ -422,6 +500,8 @@ async function doEvent(env, websocket, event) {
 					const result = await env.DB.prepare("delete from event where id = ? and pubkey = ?").bind(v, event.pubkey).run();
 					console.log("delete result: ");
 					console.log(result);
+					// clean associated tags from event_tag
+					await env.DB.prepare("delete from event_tag where event_id = ?").bind(v).run();
 					// try to delete kv
 					try {
 						await env.KV.delete(v);
@@ -443,15 +523,93 @@ async function doEvent(env, websocket, event) {
 	}
 
 	// base event
-	let tags = event.tags;
-	if (tags !== null) {
-		event.tags = JSON.stringify(tags);
+	let rawTags = event.tags;
+	if (rawTags !== null) {
+		event.tags = JSON.stringify(rawTags);
 		try {
 			// maybe the event is existing.
-			const result = await env.DB.prepare("insert into event(id, pubkey, created_at, kind, tags, content, sig) values (?, ?, ?, ?, ?, ?, ?)").bind(event.id, event.pubkey, event.created_at, event.kind, event.tags, event.content, event.sig).run();
-			console.log("insert result: ");
-			console.log(result);
+			const result = await env.DB.prepare("insert or ignore into event(id, pubkey, created_at, kind, tags, content, sig) values (?, ?, ?, ?, ?, ?, ?)").bind(event.id, event.pubkey, event.created_at, event.kind, event.tags, event.content, event.sig).run();
+			console.log("insert result: ", result);
+
+			if (result.meta && result.meta.changes > 0) {
+				// Insert single-character tags into event_tag
+				if (Array.isArray(rawTags) && rawTags.length > 0) {
+					const tagStatements = [];
+					for (const tag of rawTags) {
+						if (Array.isArray(tag) && tag.length >= 2) {
+							const tagName = tag[0];
+							const tagValue = tag[1];
+							if (typeof tagName === 'string' && tagName.length === 1 && typeof tagValue === 'string') {
+								tagStatements.push(
+									env.DB.prepare("insert or ignore into event_tag(event_id, tag_name, tag_value) values (?, ?, ?)").bind(event.id, tagName, tagValue)
+								);
+							}
+						}
+					}
+					if (tagStatements.length > 0) {
+						await env.DB.batch(tagStatements);
+					}
+				}
+
+				// Prune replaceable events (retain latest 5 versions)
+				await pruneReplaceableEvents(env, event, rawTags);
+			}
 		} catch (e) {
+			console.error("doEvent error:", e);
+		}
+	}
+}
+
+async function pruneReplaceableEvents(env, event, rawTags) {
+	const kind = event.kind;
+	// 1. Standard replaceable events: kind 0, 3, or 10000 <= kind < 20000
+	if (kind === 0 || kind === 3 || (kind >= 10000 && kind < 20000)) {
+		const oldRows = await env.DB.prepare(
+			"SELECT id FROM event WHERE pubkey = ? AND kind = ? ORDER BY created_at DESC LIMIT -1 OFFSET 5"
+		).bind(event.pubkey, kind).all();
+
+		if (oldRows && oldRows.results && oldRows.results.length > 0) {
+			const pruneStatements = [];
+			for (const row of oldRows.results) {
+				pruneStatements.push(env.DB.prepare("DELETE FROM event_tag WHERE event_id = ?").bind(row.id));
+				pruneStatements.push(env.DB.prepare("DELETE FROM event WHERE id = ?").bind(row.id));
+			}
+			await env.DB.batch(pruneStatements);
+		}
+	}
+	// 2. Parameterized replaceable events: 30000 <= kind < 40000 (NIP-33)
+	else if (kind >= 30000 && kind < 40000) {
+		let hasDTag = false;
+		let dTagValue = "";
+		if (Array.isArray(rawTags)) {
+			for (const tag of rawTags) {
+				if (Array.isArray(tag) && tag[0] === 'd') {
+					hasDTag = true;
+					dTagValue = tag[1] || "";
+					break;
+				}
+			}
+		}
+
+		// If no 'd' tag is found, this parameterized replaceable event cannot be uniquely identified; skip pruning
+		if (!hasDTag) {
+			return;
+		}
+
+		const oldRows = await env.DB.prepare(`
+			SELECT e.id FROM event e
+			JOIN event_tag t ON e.id = t.event_id
+			WHERE e.pubkey = ? AND e.kind = ? AND t.tag_name = 'd' AND t.tag_value = ?
+			ORDER BY e.created_at DESC LIMIT -1 OFFSET 5
+		`).bind(event.pubkey, kind, dTagValue).all();
+
+		if (oldRows && oldRows.results && oldRows.results.length > 0) {
+			const pruneStatements = [];
+			for (const row of oldRows.results) {
+				pruneStatements.push(env.DB.prepare("DELETE FROM event_tag WHERE event_id = ?").bind(row.id));
+				pruneStatements.push(env.DB.prepare("DELETE FROM event WHERE id = ?").bind(row.id));
+			}
+			await env.DB.batch(pruneStatements);
 		}
 	}
 }
