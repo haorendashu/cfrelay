@@ -32,6 +32,8 @@ const relayInfo = {
 
 const relayInfoHeader = new Headers({
 	"Content-Type": "application/nostr+json",
+	"Access-Control-Allow-Origin": "*",
+	"Cache-Control": "public, max-age=3600, s-maxage=86400",
 });
 
 const jsonHeader = new Headers({
@@ -40,6 +42,15 @@ const jsonHeader = new Headers({
 	"Access-Control-Allow-Headers": "Upgrade, Accept, Content-Type, User-Agent",
 	"Access-Control-Allow-Credentials": "true",
 	"Content-Type": "application/json",
+});
+
+const cachedJsonHeader = new Headers({
+	"Access-Control-Allow-Origin": "*",
+	"Access-Control-Allow-Methods": "GET, POST, PUT",
+	"Access-Control-Allow-Headers": "Upgrade, Accept, Content-Type, User-Agent",
+	"Access-Control-Allow-Credentials": "true",
+	"Content-Type": "application/json",
+	"Cache-Control": "public, max-age=3600, s-maxage=86400",
 });
 
 const corsHeader = new Headers({
@@ -107,9 +118,11 @@ function getAllowedAuthors(env) {
 	return Array.from(new Set(list));
 }
 
-function checkOwner(env, pubkey) {
+function checkAllowedAuthor(env, pubkey) {
+	if (!pubkey) return false;
 	return getAllowedAuthors(env).includes(pubkey);
 }
+const checkOwner = checkAllowedAuthor;
 
 let isSchemaReady = false;
 let schemaInitPromise = null;
@@ -199,13 +212,13 @@ export default {
 			// return nip05 info
 			const nip05UserJsonStr = '{"names":' + env.NIP05_USERS_TEXT + '}';
 			return new Response(nip05UserJsonStr, {
-				status: 200, headers: jsonHeader,
+				status: 200, headers: cachedJsonHeader,
 			});
 		} else if (url.pathname == '/.well-known/nostr/nip96.json') {
 			// return nip96 info
 			nip96Info['api_url'] = getRequestHost(request) + '/api/nip96/upload';
 			return new Response(JSON.stringify(nip96Info), {
-				status: 200, headers: jsonHeader,
+				status: 200, headers: cachedJsonHeader,
 			});
 		} else if (url.pathname == '/api/nip96/upload') {
 			// handle nip96 upload method
@@ -226,12 +239,12 @@ export default {
 };
 
 async function handleSession(env, websocket) {
-	let isOwner = false;
+	let isAllowedAuthor = false;
 	let authed = false;
-	let authedPubkey;
+	let authedPubkey = null;
 	let challengeStr = generateRandomString(12);
 
-	let messageHandling = 0;
+	const reqTimestamps = [];
 
 	websocket.accept();
 	websocket.addEventListener('message', async (wsEvent) => {
@@ -246,27 +259,33 @@ async function handleSession(env, websocket) {
 
 			const typ = message[0];
 			if (typ == 'REQ') {
-				messageHandling++;
-				if (messageHandling > 5 && !isOwner) {
-					sendNotice(websocket, "Too fast! Slow down please!")
-					return;
+				if (!isAllowedAuthor) {
+					const now = Date.now();
+					while (reqTimestamps.length > 0 && reqTimestamps[0] <= now - 5000) {
+						reqTimestamps.shift();
+					}
+					if (reqTimestamps.length >= 30) {
+						sendNotice(websocket, "Rate limit exceeded. Please slow down.");
+						return;
+					}
+					reqTimestamps.push(now);
 				}
 
-				await doReq(env, websocket, message, isOwner)
+				await doReq(env, websocket, message, authedPubkey);
 			} else if (typ == 'EVENT') {
 				let event = message[1];
 
-				if (!isOwner) {
-					websocket.send('["OK","'+event.id+'",false,"Only the authed owner can send events."]');
+				if (!isAllowedAuthor) {
+					websocket.send('["OK","'+event.id+'",false,"Only authorized authors can send events."]');
 					return;
 				}
 				if (event.pubkey != authedPubkey) {
-					// The owner login but this isn't owner's event, so just ignore it.
-					// websocket.send('["OK","'+event.id+'",false,"Only the owner can send events."]');
+					// The author logged in but this isn't their event, so just ignore it.
+					// websocket.send('["OK","'+event.id+'",false,"Only authorized authors can send events."]');
 					return;
 				}
 
-				// due to this event is sended from owner, we don't valid the sig.
+				// due to this event is sended from author, we don't valid the sig.
 				await doEvent(env, websocket, event);
 				await websocket.send('["OK","'+event.id+'",true,""]');
 			} else if (typ == 'CLOSE') {
@@ -277,21 +296,19 @@ async function handleSession(env, websocket) {
 					console.log("doAuth result " + pubkey);
 					authed = true;
 					authedPubkey = pubkey;
-					if (checkOwner(env, pubkey)) {
-						isOwner = true;
+					if (checkAllowedAuthor(env, pubkey)) {
+						isAllowedAuthor = true;
 					}
 				} else {
-					sendNotice("Auth fail");
+					sendNotice(websocket, "Auth fail");
 				}
 			} else if (typ == 'COUNT') {
-				await doCount(env, websocket, message);
+				await doCount(env, websocket, message, authedPubkey);
 			} else {
 
 			}
 		} catch (e) {
 			console.log(e);
-		} finally {
-			messageHandling--;
 		}
 	});
 
@@ -307,17 +324,63 @@ function sendNotice(websocket, msg) {
 	websocket.send('["NOTICE","'+msg+'"]');
 }
 
-async function doReq(env, websocket, message, isOwner) {
+function preprocessFilter(env, filter, authorPubkey) {
+	if (!filter || typeof filter !== 'object') {
+		return null;
+	}
+
+	const isAllowed = typeof authorPubkey === 'string'
+		? checkAllowedAuthor(env, authorPubkey)
+		: Boolean(authorPubkey);
+
+	// 1. Privacy Pre-Filtering: For callers who are not allowed authors, strip private kinds (4 and 1059)
+	if (!isAllowed && Array.isArray(filter.kinds) && filter.kinds.length > 0) {
+		const originalKindsCount = filter.kinds.length;
+		const sanitizedKinds = filter.kinds.filter(k => k !== 4 && k !== 1059);
+		if (sanitizedKinds.length === 0 && originalKindsCount > 0) {
+			// Query targeted exclusively private kinds; abort database execution directly in memory
+			return null;
+		}
+		filter.kinds = sanitizedKinds;
+	}
+
+	// 2. Whitelist Circuit Breaker: Verify author filter against allowed whitelist
+	if (Array.isArray(filter.authors) && filter.authors.length > 0) {
+		const allowed = getAllowedAuthors(env);
+		const matchedAuthors = filter.authors.filter(a => allowed.includes(a));
+		const hasIds = Array.isArray(filter.ids) && filter.ids.length > 0;
+
+		if (matchedAuthors.length === 0 && !hasIds) {
+			// Targeted non-whitelisted authors without event IDs; short-circuit directly in memory
+			return null;
+		}
+
+		if (matchedAuthors.length > 0) {
+			filter.authors = matchedAuthors;
+		}
+	}
+
+	return filter;
+}
+
+async function doReq(env, websocket, message, authorPubkey) {
 	if (message.length > 2) {
 		let subscriptionId = message[1];
+		let isAllowed = typeof authorPubkey === 'string'
+			? checkAllowedAuthor(env, authorPubkey)
+			: Boolean(authorPubkey);
 
 		for (let i = 2; i < message.length; i++) {
 			let filter = message[i];
-			let events = await doQueryEvent(env, filter);
+			let processedFilter = preprocessFilter(env, filter, authorPubkey);
+			if (!processedFilter) {
+				continue;
+			}
+			let events = await doQueryEvent(env, processedFilter);
 			for (let j = 0; j < events.length; j++) {
 				let event = events[j];
-				if (!isOwner && (event.kind == 4 || event.kind == 1059)) {
-					// only the owner can receive DM and GiftWrap event
+				if (!isAllowed && (event.kind == 4 || event.kind == 1059)) {
+					// only allowed authors can receive DM and GiftWrap events
 					continue;
 				}
 
@@ -325,6 +388,23 @@ async function doReq(env, websocket, message, isOwner) {
 				let tagsStr = event.tags;
 				if (typeof tagsStr == 'string') {
 					event.tags = JSON.parse(tagsStr);
+				}
+
+				if (isAllowed && typeof authorPubkey === 'string' && (event.kind == 4 || event.kind == 1059)) {
+					// In a multi-author relay, ensure an allowed author only receives private events
+					// where they are either the sender (event.pubkey) or the recipient (p tag)
+					let isRecipient = false;
+					if (Array.isArray(event.tags)) {
+						for (const tag of event.tags) {
+							if (tag[0] === 'p' && tag[1] === authorPubkey) {
+								isRecipient = true;
+								break;
+							}
+						}
+					}
+					if (event.pubkey !== authorPubkey && !isRecipient) {
+						continue;
+					}
 				}
 
 				if (event.kind === EVENT_KIND.STORAGE_SHARED_FILE) {
@@ -344,12 +424,17 @@ async function doReq(env, websocket, message, isOwner) {
 	}
 }
 
-async function doCount(env, websocket, message) {
+async function doCount(env, websocket, message, authorPubkey) {
 	if (message.length > 2) {
 		let subscriptionId = message[1];
 		let filter = message[2];
+		let processedFilter = preprocessFilter(env, filter, authorPubkey);
+		if (!processedFilter) {
+			await websocket.send('["COUNT","'+subscriptionId+'",0]');
+			return;
+		}
 
-		let count = await doQueryCount(env, filter);
+		let count = await doQueryCount(env, processedFilter);
 		await websocket.send('["COUNT","'+subscriptionId+'",'+count+']');
 	}
 }
@@ -688,9 +773,9 @@ function verifyNip98(env, request) {
 
 		if (verifyEvent(authEvent)) {
 			// authEvent check success
-			// check the owner
-			if (checkOwner(env, authEvent.pubkey)) {
-				// it's owner request
+			// check the author
+			if (checkAllowedAuthor(env, authEvent.pubkey)) {
+				// it's allowed author request
 				return null;
 			}
 		}
@@ -779,3 +864,13 @@ async function handleNip96Download(env, request, pathname) {
 		headers,
 	});
 }
+
+export {
+	preprocessFilter,
+	getAllowedAuthors,
+	checkAllowedAuthor,
+	checkOwner,
+	doReq,
+	doCount,
+	handleSession,
+};
