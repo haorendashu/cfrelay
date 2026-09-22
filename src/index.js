@@ -7,7 +7,7 @@
  *
  * Learn more at https://developers.cloudflare.com/workers/
  */
-import {bytesToHex} from '@noble/hashes/utils'
+import { bytesToHex } from '@noble/hashes/utils'
 import { sha256 } from '@noble/hashes/sha256'
 import { schnorr } from '@noble/curves/secp256k1'
 import { decode as base64Decode } from 'js-base64';
@@ -27,7 +27,7 @@ const relayInfo = {
 	"pubkey": "",
 	"software": "https://github.com/haorendashu/cfrelay",
 	"supported_nips": [1, 2, 5, 9, 11, 12, 16, 33, 42, 45, 50, 95, 96],
-	"version": "0.0.4",
+	"version": "0.1.0",
 }
 
 const relayInfoHeader = new Headers({
@@ -276,7 +276,7 @@ async function handleSession(env, websocket) {
 				let event = message[1];
 
 				if (!isAllowedAuthor) {
-					websocket.send('["OK","'+event.id+'",false,"Only authorized authors can send events."]');
+					websocket.send('["OK","' + event.id + '",false,"Only authorized authors can send events."]');
 					return;
 				}
 				if (event.pubkey != authedPubkey) {
@@ -287,7 +287,7 @@ async function handleSession(env, websocket) {
 
 				// due to this event is sended from author, we don't valid the sig.
 				await doEvent(env, websocket, event);
-				await websocket.send('["OK","'+event.id+'",true,""]');
+				await websocket.send('["OK","' + event.id + '",true,""]');
 			} else if (typ == 'CLOSE') {
 				// we haven't holder subscription and push, so just ignore the close message.
 			} else if (typ == 'AUTH') {
@@ -317,11 +317,11 @@ async function handleSession(env, websocket) {
 		console.log(evt);
 	});
 
-	websocket.send('["AUTH","'+challengeStr+'"]')
+	websocket.send('["AUTH","' + challengeStr + '"]')
 }
 
 function sendNotice(websocket, msg) {
-	websocket.send('["NOTICE","'+msg+'"]');
+	websocket.send('["NOTICE","' + msg + '"]');
 }
 
 function preprocessFilter(env, filter, authorPubkey) {
@@ -412,7 +412,7 @@ async function doReq(env, websocket, message, authorPubkey) {
 					let content = await env.KV.get(event.id);
 					// send to client by string combine avoid json encode
 					let eventStr = JSON.stringify(event, ['id', 'pubkey', 'created_at', 'kind', 'tags', 'sig']);
-					await websocket.send('["EVENT","'+subscriptionId+'",{"content":"'+content+'",'+eventStr.substring(1)+']');
+					await websocket.send('["EVENT","' + subscriptionId + '",{"content":"' + content + '",' + eventStr.substring(1) + ']');
 					continue
 				}
 
@@ -420,7 +420,7 @@ async function doReq(env, websocket, message, authorPubkey) {
 			}
 		}
 
-		await websocket.send('["EOSE","'+subscriptionId+'"]');
+		await websocket.send('["EOSE","' + subscriptionId + '"]');
 	}
 }
 
@@ -430,12 +430,12 @@ async function doCount(env, websocket, message, authorPubkey) {
 		let filter = message[2];
 		let processedFilter = preprocessFilter(env, filter, authorPubkey);
 		if (!processedFilter) {
-			await websocket.send('["COUNT","'+subscriptionId+'",0]');
+			await websocket.send('["COUNT","' + subscriptionId + '",0]');
 			return;
 		}
 
 		let count = await doQueryCount(env, processedFilter);
-		await websocket.send('["COUNT","'+subscriptionId+'",'+count+']');
+		await websocket.send('["COUNT","' + subscriptionId + '",' + count + ']');
 	}
 }
 
@@ -463,7 +463,7 @@ function queryEventsSql(env, filter, doCount, params) {
 	let key = 'ids';
 	if (filter[key] != null && filter[key] instanceof Array && filter[key].length > 0) {
 		params.push.apply(params, filter[key]);
-		conditions.push('id IN('+makePlaceHolders(filter[key].length)+')')
+		conditions.push('id IN(' + makePlaceHolders(filter[key].length) + ')')
 		filter[key] = null;
 	}
 
@@ -473,7 +473,7 @@ function queryEventsSql(env, filter, doCount, params) {
 		authors = getAllowedAuthors(env);
 	}
 	params.push.apply(params, authors);
-	conditions.push('pubkey IN('+makePlaceHolders(authors.length)+')');
+	conditions.push('pubkey IN(' + makePlaceHolders(authors.length) + ')');
 	filter[key] = null;
 
 	key = 'kinds';
@@ -490,7 +490,7 @@ function queryEventsSql(env, filter, doCount, params) {
 	}
 
 	params.push.apply(params, kinds);
-	conditions.push('kind IN('+makePlaceHolders(kinds.length)+')');
+	conditions.push('kind IN(' + makePlaceHolders(kinds.length) + ')');
 	filter[key] = null;
 
 	key = 'since';
@@ -513,7 +513,7 @@ function queryEventsSql(env, filter, doCount, params) {
 	let search = filter[key];
 	if (search != null && typeof search == 'string') {
 		conditions.push('content LIKE ? ESCAPE "\\"');
-		params.push('%'+search.replaceAll('%', '\%')+'%');
+		params.push('%' + search.replaceAll('%', '\%') + '%');
 	}
 	filter[key] = null;
 
@@ -549,10 +549,10 @@ function queryEventsSql(env, filter, doCount, params) {
 	}
 
 	if (doCount) {
-		return 'SELECT COUNT(*) as total FROM event WHERE '+ conditions.join(' And ') +' ORDER BY created_at DESC LIMIT ?';
+		return 'SELECT COUNT(*) as total FROM event WHERE ' + conditions.join(' And ') + ' ORDER BY created_at DESC LIMIT ?';
 	}
 
-	return 'SELECT id, pubkey, created_at, kind, tags, content, sig FROM event WHERE '+ conditions.join(' And ') +' ORDER BY created_at DESC LIMIT ?'
+	return 'SELECT id, pubkey, created_at, kind, tags, content, sig FROM event WHERE ' + conditions.join(' And ') + ' ORDER BY created_at DESC LIMIT ?'
 }
 
 function getMaxString(inputString, num) {
@@ -590,7 +590,7 @@ async function doEvent(env, websocket, event) {
 					// try to delete kv
 					try {
 						await env.KV.delete(v);
-					} catch (e) {}
+					} catch (e) { }
 				}
 			}
 		}

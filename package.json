@@ -1,19 +1,19 @@
 {
   "name": "cfrelay",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "test": "vitest",
-	"predeploy": "wrangler d1 migrations apply DB --remote",
-	"seedLocalD1": "wrangler d1 migrations apply DB --local"
+    "predeploy": "wrangler d1 migrations apply DB --remote",
+    "seedLocalD1": "wrangler d1 migrations apply DB --local"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.1.0",
     "vitest": "1.3.0",
-	"wrangler": "4.21.x"
+    "wrangler": "4.21.x"
   },
   "dependencies": {
     "@noble/curves": "^1.4.0",
